@@ -1333,3 +1333,16 @@ response-graph-readout = { $frequency } · { $direction ->
         [down] -{ $gain }
        *[flat] { $gain }
     } dB
+
+settings-soloist = Spotify Soloist audio engine
+settings-soloist-detail = Plays Spotify with the official command-line engine. Install Soloist, enter its executable path and your personal API key, then pair once. Restart Sonora after changing engines. Audio plays directly through the system: Sonora's equalizer, visualizer, gapless transitions, downloads and output-device settings do not apply to Soloist.
+settings-soloist-path = Soloist executable path
+settings-soloist-key = Personal Soloist API key
+settings-soloist-download = Download Soloist
+settings-soloist-dashboard = Get my API key
+settings-soloist-pair = Pair / cancel pairing
+settings-soloist-saved = Saved privately. Restart Sonora to apply changes.
+settings-soloist-save-error = Could not save Soloist settings. Check the log.
+settings-soloist-pairing = On your phone, open Spotify on the same network and select “Sonora Soloist”. Click Pair again to cancel. Stop playback in Sonora before pairing.
+settings-soloist-paired = Paired. Restart Sonora, then choose a track here.
+settings-soloist-pair-error = Pairing failed. Check the executable, API key and Soloist build expiry, then consult the log.

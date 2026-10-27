@@ -1,3 +1,5 @@
+> **Soloist fork (Linux, based on 0.44.2):** setup, limitations and build instructions are in [SOLOIST.md](SOLOIST.md).
+
 <div align="center">
 
 <img src="./.github/readme-icon.svg" alt="" width="60" height="60">

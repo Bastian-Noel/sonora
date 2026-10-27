@@ -1337,3 +1337,16 @@ response-graph-readout = { $frequency } · { $direction ->
         [down] -{ $gain }
        *[flat] { $gain }
     } dB
+
+settings-soloist = Moteur audio Spotify Soloist
+settings-soloist-detail = Lit Spotify avec le moteur officiel sans interface. Installez Soloist, indiquez son chemin et votre clé personnelle, puis associez-le une fois. Redémarrez Sonora après un changement de moteur. Le son passe directement par le système : l’égaliseur, le visualiseur, les transitions sans interruption, les téléchargements et le choix de sortie de Sonora ne s’appliquent pas à Soloist.
+settings-soloist-path = Chemin de l’exécutable Soloist
+settings-soloist-key = Clé API Soloist personnelle
+settings-soloist-download = Télécharger Soloist
+settings-soloist-dashboard = Obtenir ma clé API
+settings-soloist-pair = Associer / annuler l’association
+settings-soloist-saved = Enregistré de façon privée. Redémarrez Sonora pour appliquer les changements.
+settings-soloist-save-error = Échec de l’enregistrement. Consultez le journal.
+settings-soloist-pairing = Sur votre téléphone, ouvrez Spotify sur le même réseau et sélectionnez « Sonora Soloist ». Cliquez de nouveau sur Associer pour annuler. Arrêtez la lecture dans Sonora avant l’association.
+settings-soloist-paired = Association réussie. Redémarrez Sonora, puis choisissez un morceau ici.
+settings-soloist-pair-error = Échec de l’association. Vérifiez l’exécutable, la clé API et l’expiration de Soloist, puis consultez le journal.

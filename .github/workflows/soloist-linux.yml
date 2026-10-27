@@ -1,0 +1,65 @@
+name: Sonora Soloist Linux
+
+on:
+  push:
+    branches: [soloist-playback]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: soloist-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: 2
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config cmake mold \
+            libasound2-dev libfontconfig1-dev libfreetype-dev libsqlite3-dev \
+            libx11-dev libxcb1-dev libxcursor-dev libxi-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libvulkan-dev libdbus-1-dev
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: soloist-linux
+          cache-on-failure: true
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Test Soloist bridge
+        run: cargo test --locked --package music soloist::tests
+      - name: Build Linux executable
+        run: cargo build --release --locked --package sonora
+      - name: Package executable and setup guide
+        run: |
+          mkdir -p dist/sonora-soloist
+          cp target/release/sonora dist/sonora-soloist/sonora
+          cp SOLOIST.md COPYING dist/sonora-soloist/
+          cp assets/linux/sonora.desktop assets/linux/sonora.svg dist/sonora-soloist/
+          tar -C dist -czf dist/sonora-0.44.2-soloist-linux-x86_64.tar.gz sonora-soloist
+          cd dist
+          sha256sum sonora-0.44.2-soloist-linux-x86_64.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sonora-0.44.2-soloist-linux-x86_64
+          path: |
+            dist/sonora-0.44.2-soloist-linux-x86_64.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30

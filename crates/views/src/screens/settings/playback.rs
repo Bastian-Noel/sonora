@@ -32,7 +32,10 @@ const SLEEP_LAST: usize = (SLEEP_MAX_MINUTES - SLEEP_MIN_MINUTES + 1) as usize
 impl SettingsView {
     pub(super) fn playback_groups(&self, cx: &App) -> Vec<Group> {
         let capabilities = self.session.read(cx).capabilities();
-        let mut playing = vec![Slot::Normalisation, Slot::Gapless];
+        let mut playing = vec![Slot::Soloist];
+        if !music::soloist::Config::load().enabled {
+            playing.extend([Slot::Normalisation, Slot::Gapless]);
+        }
         playing.extend([Slot::Sleep, Slot::StayAwake]);
         let mut groups = vec![Group::new("settings-group-playing", "icons/play.svg").rows(playing)];
         // one level is nothing to choose between, so it is stated in a row rather than offered

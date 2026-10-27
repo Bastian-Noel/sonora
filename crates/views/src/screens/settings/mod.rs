@@ -38,6 +38,7 @@ mod player_bar;
 mod preview;
 mod rows;
 mod scrobbling;
+mod soloist;
 mod sound;
 mod storage;
 mod themes;
@@ -107,6 +108,7 @@ enum Slot {
     SampleRate,
     Buffer,
     Equalizer,
+    Soloist,
     SpotifyConnect,
     SpotifyConnectName,
     SpotifyConnectCustom,
@@ -254,6 +256,10 @@ pub struct SettingsView {
     scrobble_second: Entity<Input>,
     /// The field for the custom name Sonora goes by in Spotify's device list.
     connect_name: Entity<Input>,
+    soloist_path: Entity<Input>,
+    soloist_key: Entity<Input>,
+    soloist_message: &'static str,
+    soloist_pair: Option<Task<()>>,
     /// The service whose link dialog is open, by slug.
     scrobble_prompt: Option<&'static str>,
     /// The provider whose sign-in choice is up, by slug and name.
@@ -372,6 +378,14 @@ impl SettingsView {
         })
         .detach();
 
+        let soloist_config = music::soloist::Config::load();
+        let soloist_path = cx.new(|cx| Input::new("settings-soloist-path", cx));
+        soloist_path.update(cx, |input, cx| {
+            input.set_text(soloist_config.executable.to_string_lossy().to_string(), cx)
+        });
+        let soloist_key = cx.new(|cx| Input::new("settings-soloist-key", cx).masked());
+        soloist_key.update(cx, |input, cx| input.set_text(soloist_config.api_key, cx));
+
         let popovers = Popovers::default();
         let output_picker = cx.new(|cx| OutputPicker::new(outputs.clone(), popovers.clone(), cx));
         let previews = preview::Previews::new(cx);
@@ -415,6 +429,10 @@ impl SettingsView {
             scrobble_first: cx.new(|cx| Input::new("settings-scrobble-key", cx)),
             scrobble_second: cx.new(|cx| Input::new("settings-scrobble-secret", cx)),
             connect_name,
+            soloist_path,
+            soloist_key,
+            soloist_message: "settings-soloist-detail",
+            soloist_pair: None,
             scrobble_prompt: None,
             languages,
             typefaces,
@@ -836,6 +854,7 @@ impl SettingsView {
                 t!("settings-lyrics-for-local-files"),
                 t!("settings-lyrics-for-local-files-detail"),
             ),
+            Slot::Soloist => (t!("settings-soloist"), t!("settings-soloist-detail")),
             Slot::SpotifyConnect => (
                 t!("settings-spotify-connect"),
                 t!("settings-spotify-connect-detail"),
@@ -961,6 +980,7 @@ impl SettingsView {
             Slot::Karaoke => self.karaoke_lyrics_row(cx),
             Slot::Romanized => self.romanized_lyrics_row(cx),
             Slot::LyricsForLocal => self.lyrics_for_local_files_row(cx),
+            Slot::Soloist => self.soloist_row(cx),
             Slot::SpotifyConnect => self.spotify_connect_row(cx),
             Slot::SpotifyConnectName => self.spotify_connect_name_row(cx),
             Slot::SpotifyConnectCustom => self.spotify_connect_custom_row(),

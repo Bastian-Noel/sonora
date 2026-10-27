@@ -44,7 +44,11 @@ impl MusicApi for LibrespotClient {
     }
 
     fn connect(&self) -> Option<Arc<dyn Connect>> {
-        Some(self.connect.clone())
+        if crate::soloist::Config::load().enabled {
+            None
+        } else {
+            Some(self.connect.clone())
+        }
     }
 
     fn share_url(&self, kind: MediaKind, id: &str) -> Option<String> {

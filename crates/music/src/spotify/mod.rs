@@ -60,7 +60,13 @@ impl SpotifyProvider {
 
     async fn session(&self, client: LibrespotClient) -> Result<ProviderSession> {
         let profile = client.profile().await?;
-        let playback = Arc::new(Factory::new(client.session().clone()));
+        let soloist = crate::soloist::Config::load();
+        let use_soloist = soloist.enabled;
+        let playback: Arc<dyn PlaybackFactory> = if use_soloist {
+            Arc::new(crate::soloist::Factory(soloist))
+        } else {
+            Arc::new(Factory::new(client.session().clone()))
+        };
         Ok(ProviderSession {
             profile,
             api: Arc::new(client),
@@ -70,7 +76,13 @@ impl SpotifyProvider {
             capabilities: Capabilities {
                 pins: true,
                 download_gap: playback::DOWNLOAD_GAP,
-                qualities: playback::QUALITIES,
+                qualities: if use_soloist {
+                    &[]
+                } else {
+                    playback::QUALITIES
+                },
+                downloads: !use_soloist,
+                keeps: !use_soloist,
                 ..Capabilities::ALL
             },
         })
@@ -114,7 +126,7 @@ impl MusicProvider for SpotifyProvider {
     /// A session that never connects, which plays downloads and nothing else. It is built on
     /// the caller's tokio runtime.
     fn offline_playback(&self) -> Option<Arc<dyn PlaybackFactory>> {
-        if !self.stored() {
+        if crate::soloist::Config::load().enabled || !self.stored() {
             return None;
         }
         let session = auth::session(&self.config)

@@ -7,6 +7,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Spotify playback through Soloist with native key setup, pairing, transport controls and Linux CI artifacts.
+
+
 ## [0.44.2] - 2026-10-25
 
 ### Fixed
