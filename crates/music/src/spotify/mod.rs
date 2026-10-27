@@ -63,7 +63,10 @@ impl SpotifyProvider {
         let soloist = crate::soloist::Config::load();
         let use_soloist = soloist.enabled;
         let playback: Arc<dyn PlaybackFactory> = if use_soloist {
-            Arc::new(crate::soloist::Factory(soloist))
+            Arc::new(crate::soloist::Factory::new(
+                soloist,
+                tokio::runtime::Handle::current(),
+            ))
         } else {
             Arc::new(Factory::new(client.session().clone()))
         };

@@ -139,14 +139,25 @@ impl Drop for Pairing {
 }
 
 /// Builds the audio bridge on Sonora's existing I/O runtime.
-pub struct Factory(pub Config);
+pub struct Factory {
+    config: Config,
+    runtime: tokio::runtime::Handle,
+}
+
+impl Factory {
+    /// Capture the app's I/O handle while the provider session is built on tokio. `start`
+    /// itself runs on GPUI's main thread, which has no current tokio reactor.
+    pub fn new(config: Config, runtime: tokio::runtime::Handle) -> Self {
+        Self { config, runtime }
+    }
+}
 
 impl PlaybackFactory for Factory {
     fn start(&self, config: PlaybackConfig) -> (Box<dyn Player>, Box<dyn PlaybackEvents>) {
         let (commands, receiver) = unbounded_channel();
         let (events, output) = unbounded_channel();
-        let setup = self.0.clone();
-        let task = tokio::spawn(async move {
+        let setup = self.config.clone();
+        let task = self.runtime.spawn(async move {
             let mut worker = Worker {
                 setup,
                 gain: config.gain,

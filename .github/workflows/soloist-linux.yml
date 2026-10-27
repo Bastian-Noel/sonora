@@ -42,10 +42,10 @@ jobs:
           cache-on-failure: true
       - name: Check formatting
         run: cargo fmt --all --check
-      - name: Test music library
-        run: cargo test --locked --package music
       - name: Build Linux executable
         run: cargo build --release --locked --package sonora
+      - name: Test music library using release dependencies
+        run: cargo test --release --locked --package music --features widevine
       - name: Package executable and setup guide
         run: |
           mkdir -p dist/sonora-soloist

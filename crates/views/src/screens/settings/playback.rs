@@ -33,7 +33,9 @@ impl SettingsView {
     pub(super) fn playback_groups(&self, cx: &App) -> Vec<Group> {
         let capabilities = self.session.read(cx).capabilities();
         let mut playing = vec![Slot::Soloist];
-        if !music::soloist::Config::load().enabled {
+        if self.session.read(cx).provider_slug() != Some("spotify")
+            || !music::soloist::Config::load().enabled
+        {
             playing.extend([Slot::Normalisation, Slot::Gapless]);
         }
         playing.extend([Slot::Sleep, Slot::StayAwake]);
