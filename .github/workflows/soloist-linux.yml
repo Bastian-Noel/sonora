@@ -42,8 +42,8 @@ jobs:
           cache-on-failure: true
       - name: Check formatting
         run: cargo fmt --all --check
-      - name: Test Soloist bridge
-        run: cargo test --locked --package music soloist::tests
+      - name: Test music library
+        run: cargo test --locked --package music
       - name: Build Linux executable
         run: cargo build --release --locked --package sonora
       - name: Package executable and setup guide

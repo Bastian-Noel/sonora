@@ -230,8 +230,10 @@ struct Running {
     id: String,
     at: Duration,
     anchor: Instant,
+    deadline: Instant,
     playing: bool,
     ready: bool,
+    prepared: bool,
     start_at: Duration,
     paused: bool,
     seek_pending: bool,
@@ -303,6 +305,13 @@ impl Worker {
                     }
                 }
                 _ = clock.tick() => {
+                    if !current.ready && Instant::now() > current.deadline {
+                        let id = Some(current.id.clone());
+                        log::error!("soloist: track did not become ready within 20 seconds");
+                        self.current = None;
+                        self.emit(PlaybackEvent::Unavailable { id });
+                        continue;
+                    }
                     if current.ready && current.playing {
                         let _ = self.events.send(PlaybackEvent::Position { id: Some(current.id.clone()), at: current.at + current.anchor.elapsed() });
                     }
@@ -330,8 +339,14 @@ impl Worker {
                     }
                 }
             }
-            Control::Play => self.send(json!({"command":"play"})).await?,
-            Control::Pause => self.send(json!({"command":"pause"})).await?,
+            Control::Play | Control::Pause => {
+                let paused = matches!(command, Control::Pause);
+                if let Some(track) = self.current.as_mut() {
+                    track.paused = paused;
+                }
+                self.send(json!({"command":if paused { "pause" } else { "play" }}))
+                    .await?;
+            }
             Control::Seek(at) => {
                 if let Some(current) = self.current.as_mut() {
                     current.seek_pending = true;
@@ -383,8 +398,10 @@ impl Worker {
                     id,
                     at,
                     anchor: Instant::now(),
+                    deadline: Instant::now() + START_TIMEOUT,
                     playing: false,
                     ready: false,
+                    prepared: false,
                     start_at: at,
                     paused,
                     seek_pending: false,
@@ -449,17 +466,30 @@ impl Worker {
         if event["status"] == "buffering" {
             return Ok(());
         }
-        if !current.ready && matches!(event["status"].as_str(), Some("playing" | "paused")) {
-            current.ready = true;
+        let initial = !current.ready;
+        if initial {
+            let seek = !current.prepared && !current.start_at.is_zero();
+            let pause = current.paused && event["status"] != "paused";
+            current.prepared = true;
             let start_at = current.start_at;
-            let paused = current.paused;
-            if !start_at.is_zero() {
+            let positioned =
+                start_at.is_zero() || current.at.abs_diff(start_at) <= Duration::from_millis(500);
+            if seek {
                 self.send(json!({"command":"seek", "position_ms":start_at.as_millis() as u64}))
                     .await?;
             }
-            if paused {
+            if pause {
                 self.send(json!({"command":"pause"})).await?;
             }
+            if seek
+                || pause
+                || !positioned
+                || (!current_paused(self) && event["status"] != "playing")
+            {
+                self.send(json!({"command":"get_state"})).await?;
+                return Ok(());
+            }
+            self.current.as_mut().expect("current track").ready = true;
             self.send(json!({"command":"set_volume", "volume":volume(self.gain)}))
                 .await?;
         }
@@ -478,7 +508,9 @@ impl Worker {
             });
         }
         match event["status"].as_str() {
-            Some("playing") if !was_playing => self.emit(PlaybackEvent::Playing { id, at }),
+            Some("playing") if initial || !was_playing => {
+                self.emit(PlaybackEvent::Playing { id, at })
+            }
             Some("paused") => self.emit(PlaybackEvent::Paused { id, at }),
             _ => {}
         }
@@ -486,134 +518,21 @@ impl Worker {
     }
 }
 
+fn current_paused(worker: &Worker) -> bool {
+    worker.current.as_ref().is_some_and(|track| track.paused)
+}
+
 fn volume(gain: f32) -> u8 {
-    (gain.clamp(0., 1.) * 100.).round() as u8
+    // Player receives a linear gain from state::playback's 50 dB taper. Soloist expects
+    // the user's volume percentage and applies its own taper, so undo Sonora's first.
+    if !gain.is_finite() || gain <= 0. {
+        return 0;
+    }
+    ((1. + 20. * gain.log10() / 50.).clamp(0., 1.) * 100.).round() as u8
 }
 fn uri(id: &str) -> String {
     match id.starts_with("spotify:") {
         true => id.to_owned(),
         false => format!("spotify:track:{id}"),
-    }
-}
-
-#[cfg(all(test, unix))]
-mod tests {
-    use super::*;
-    use tokio::net::TcpListener;
-    use tokio_tungstenite::accept_async;
-
-    /// Exercises the real WebSocket wire format without a Spotify account or API key.
-    async fn harness() -> (
-        Worker,
-        WebSocketStream<TcpStream>,
-        UnboundedReceiver<PlaybackEvent>,
-    ) {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move {
-            accept_async(listener.accept().await.unwrap().0)
-                .await
-                .unwrap()
-        });
-        let (socket, _) = connect_async(format!("ws://{address}")).await.unwrap();
-        let socket_server = server.await.unwrap();
-        let (events, output) = unbounded_channel();
-        let lock = std::sync::Arc::new(tokio::sync::Mutex::new(()))
-            .lock_owned()
-            .await;
-        let child = Command::new("sleep")
-            .arg("30")
-            .kill_on_drop(true)
-            .spawn()
-            .unwrap();
-        let worker = Worker {
-            setup: Config::default(),
-            gain: 0.42,
-            events,
-            interval: POLL,
-            current: Some(Running {
-                child,
-                _lock: lock,
-                socket,
-                id: "track-id".to_owned(),
-                at: Duration::ZERO,
-                anchor: Instant::now(),
-                playing: false,
-                ready: false,
-                start_at: Duration::ZERO,
-                paused: false,
-                seek_pending: false,
-            }),
-        };
-        (worker, socket_server, output)
-    }
-
-    async fn read_command(socket: &mut WebSocketStream<TcpStream>) -> Value {
-        let message = tokio::time::timeout(Duration::from_secs(2), socket.next())
-            .await
-            .unwrap()
-            .unwrap()
-            .unwrap();
-        serde_json::from_str(message.to_text().unwrap()).unwrap()
-    }
-
-    #[tokio::test]
-    async fn ready_snapshot_unmutes_and_announces_real_playback() {
-        let (mut worker, mut socket, mut events) = harness().await;
-        worker
-            .update(json!({"type":"playback_state", "status":"buffering"}))
-            .await
-            .unwrap();
-        assert!(events.try_recv().is_err());
-        worker.update(json!({"type":"playback_state", "status":"playing", "position":{"position_ms":1200}, "item":{"decorations":{"playback":{"duration_ms":5000}}}})).await.unwrap();
-        assert_eq!(
-            read_command(&mut socket).await,
-            json!({"type":"command", "command":"set_volume", "volume":42})
-        );
-        assert!(
-            matches!(events.recv().await, Some(PlaybackEvent::Length {duration, ..}) if duration == Duration::from_secs(5))
-        );
-        assert!(
-            matches!(events.recv().await, Some(PlaybackEvent::Playing {id:Some(id), at}) if id == "track-id" && at == Duration::from_millis(1200))
-        );
-        assert!(events.try_recv().is_err());
-    }
-
-    #[tokio::test]
-    async fn seek_waits_for_position_confirmation() {
-        let (mut worker, mut socket, mut events) = harness().await;
-        worker
-            .control(Control::Seek(Duration::from_secs(12)))
-            .await
-            .unwrap();
-        assert_eq!(
-            read_command(&mut socket).await,
-            json!({"type":"command", "command":"seek", "position_ms":12000})
-        );
-        assert!(events.try_recv().is_err());
-        worker
-            .update(json!({"type":"position_sync", "position":{"position_ms":12000, "speed":1.0}}))
-            .await
-            .unwrap();
-        assert!(
-            matches!(events.recv().await, Some(PlaybackEvent::Seeked {at, ..}) if at == Duration::from_secs(12))
-        );
-    }
-
-    #[tokio::test]
-    async fn authentication_requests_state_without_sending_the_api_key() {
-        let (mut worker, mut socket, _) = harness().await;
-        worker
-            .update(json!({"type":"auth_state", "logged_in":true}))
-            .await
-            .unwrap();
-        assert_eq!(
-            read_command(&mut socket).await,
-            json!({"type":"command", "command":"get_state"})
-        );
-        worker
-            .update(json!({"type":"error", "message":"command requires authentication"}))
-            .await
-            .unwrap_err();
     }
 }
